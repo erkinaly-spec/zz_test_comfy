@@ -22,9 +22,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v4
         with:
-          context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+          tags: |
+            ghcr.io/erkinaly-spec/zz_test_comfy:latest
+            ghcr.io/erkinaly-spec/zz_test_comfy:lb
