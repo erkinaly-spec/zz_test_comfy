@@ -38,11 +38,8 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
+          type=raw,value=latest
+          type=sha,format=short,prefix=sha-
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -69,7 +66,7 @@ jobs:
       with:
         api-key: ${{ secrets.RUNPOD_API_KEY }}
         template: runpod-template.json
-        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
     - name: Test deployment
       run: |
