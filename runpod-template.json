@@ -1,0 +1,42 @@
+{
+  "name": "ComfyUI Serverless",
+  "description": "ComfyUI с GPU для генерации изображений через API",
+  "dockerImageName": "ghcr.io/erkinaly-spec/zz_test_comfy:latest",
+  "dockerImageTag": "latest",
+  "containerPort": 8188,
+  "volumeMounts": [
+    {
+      "volumeId": "YOUR_RUNPOD_STORAGE_ID",
+      "volumeMountPath": "/runpod-volume"
+    }
+  ],
+  "env": [
+    {
+      "key": "COMFYUI_PORT",
+      "value": "8188"
+    }
+  ],
+  "gpuTypeId": "NVIDIA_RTX_4090",
+  "volumeInGb": 0,
+  "containerDiskInGb": 20,
+  "minMemoryInGb": 16,
+  "minVcpuCount": 4,
+  "maxMemoryInGb": 32,
+  "maxVcpuCount": 8,
+  "isPublic": false,
+  "isServerless": true,
+  "startJupyterLab": false,
+  "startVscode": false,
+  "dockerArgs": "",
+  "containerUser": "root",
+  "httpPort": 8188,
+  "startSsh": false,
+  "sshPublicKey": "",
+  "networkVolumeId": "",
+  "locations": ["US-KS-1", "US-KS-2", "EU-CZ-1", "EU-RO-1"],
+  "dataCenterId": "",
+  "allowedCudaVersions": ["11.8"],
+  "podTypeId": "NVIDIA_RTX_4090",
+  "ports": "8188/http"
+}
+
