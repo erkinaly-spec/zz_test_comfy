@@ -1,94 +1,113 @@
-import os, time, json, base64, subprocess, requests
 import runpod
+import requests
+import json
+import time
+import os
+from typing import Dict, Any
 
-COMFY_DIR = "/app/ComfyUI"
-COMFY_PORT = int(os.getenv("COMFY_PORT", "8188"))
-COMFY_URL = f"http://127.0.0.1:{COMFY_PORT}"
+# Конфигурация ComfyUI API
+COMFYUI_URL = "http://localhost:8188"
+API_BASE = f"{COMFYUI_URL}/api"
 
-_server_proc = None
-_started = False
-
-def _start_comfy_once():
-    global _server_proc, _started
-    if _started:
-        return
-    _server_proc = subprocess.Popen(
-        ["python3", "main.py", "--port", str(COMFY_PORT), "--listen", "127.0.0.1", "--headless"],
-        cwd=COMFY_DIR
-    )
-    # ждём, пока сервер ComfyUI поднимется
-    for _ in range(180):
+def wait_for_comfyui():
+    """Ожидание запуска ComfyUI"""
+    max_attempts = 30
+    for attempt in range(max_attempts):
         try:
-            r = requests.get(COMFY_URL, timeout=2)
-            if r.status_code in (200, 404):  # корень может отдавать 404 — это ок
-                _started = True
-                break
-        except Exception:
-            time.sleep(1)
-    if not _started:
-        raise RuntimeError("ComfyUI не запустился вовремя")
+            response = requests.get(f"{COMFYUI_URL}/system_stats", timeout=5)
+            if response.status_code == 200:
+                print("ComfyUI готов к работе")
+                return True
+        except:
+            pass
+        time.sleep(2)
+    return False
 
-def _submit_workflow(workflow_json):
-    r = requests.post(f"{COMFY_URL}/prompt", json=workflow_json, timeout=30)
-    r.raise_for_status()
-    prompt_id = r.json().get("prompt_id")
-    # ждём завершения
-    for _ in range(3600):
-        h = requests.get(f"{COMFY_URL}/history/{prompt_id}", timeout=30)
-        if h.status_code == 200:
-            data = h.json()
-            if prompt_id in data and data[prompt_id].get("status", {}).get("status") == "completed":
-                return data[prompt_id]
-        time.sleep(1)
-    raise RuntimeError("ComfyUI job timeout")
+def queue_workflow(workflow_data: Dict[str, Any]) -> str:
+    """Отправка workflow в очередь ComfyUI"""
+    try:
+        response = requests.post(f"{API_BASE}/queue", json=workflow_data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("prompt_id")
+    except Exception as e:
+        raise Exception(f"Ошибка при отправке workflow: {str(e)}")
 
-def _images_from_history(history_obj):
-    images = []
-    outputs = history_obj.get("outputs", {})
-    for node in outputs.values():
-        for img in node.get("images", []):
-            path = os.path.join(COMFY_DIR, "output", img["filename"])
-            if os.path.isfile(path):
-                with open(path, "rb") as f:
-                    images.append("data:image/png;base64," + base64.b64encode(f.read()).decode())
-    return images
+def get_workflow_status(prompt_id: str) -> Dict[str, Any]:
+    """Получение статуса выполнения workflow"""
+    try:
+        response = requests.get(f"{API_BASE}/history/{prompt_id}", timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise Exception(f"Ошибка при получении статуса: {str(e)}")
+
+def get_workflow_result(prompt_id: str) -> Dict[str, Any]:
+    """Получение результатов выполнения workflow"""
+    try:
+        response = requests.get(f"{API_BASE}/history/{prompt_id}", timeout=10)
+        response.raise_for_status()
+        history = response.json()
+        
+        if prompt_id in history:
+            result = history[prompt_id]
+            if "outputs" in result:
+                return {
+                    "status": "completed",
+                    "outputs": result["outputs"],
+                    "prompt_id": prompt_id
+                }
+        
+        return {"status": "processing", "prompt_id": prompt_id}
+    except Exception as e:
+        raise Exception(f"Ошибка при получении результатов: {str(e)}")
 
 def handler(job):
-    """
-    input варианты:
-    {
-      "ping": true               # быстрый тест без моделей
-    }
-    или
-    {
-      "workflow": {...}          # JSON-граф ComfyUI
-    }
-    или
-    {
-      "workflow_url": "https://..."  # ссылка на JSON-граф
-    }
-    """
-    payload = job.get("input", {})
+    """Основной обработчик RunPod serverless"""
+    try:
+        # Получение данных из запроса
+        job_input = job["input"]
+        
+        # Проверка наличия workflow
+        if "workflow" not in job_input:
+            return {"error": "Отсутствует workflow в запросе"}
+        
+        workflow = job_input["workflow"]
+        timeout = job_input.get("timeout", 300)  # 5 минут по умолчанию
+        
+        # Ожидание запуска ComfyUI
+        if not wait_for_comfyui():
+            return {"error": "ComfyUI не запустился в течение ожидаемого времени"}
+        
+        # Отправка workflow в очередь
+        prompt_id = queue_workflow(workflow)
+        if not prompt_id:
+            return {"error": "Не удалось получить prompt_id"}
+        
+        # Ожидание завершения выполнения
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            result = get_workflow_result(prompt_id)
+            
+            if result["status"] == "completed":
+                return {
+                    "success": True,
+                    "prompt_id": prompt_id,
+                    "outputs": result["outputs"]
+                }
+            
+            time.sleep(2)
+        
+        # Таймаут
+        return {
+            "error": f"Таймаут выполнения workflow (>{timeout} секунд)",
+            "prompt_id": prompt_id,
+            "status": "timeout"
+        }
+        
+    except Exception as e:
+        return {"error": f"Ошибка обработки: {str(e)}"}
 
-    if payload.get("ping"):
-        return {"ok": True, "message": "pong"}
-
-    _start_comfy_once()
-
-    if "workflow" in payload:
-        workflow = payload["workflow"]
-    elif "workflow_url" in payload:
-        workflow = requests.get(payload["workflow_url"], timeout=60).json()
-    else:
-        raise ValueError("Нужно передать 'workflow' или 'workflow_url'")
-
-    history = _submit_workflow(workflow)
-    images = _images_from_history(history)
-
-    return {
-        "status": "completed",
-        "images": images,
-        "meta": {k: v.get("status", {}) for k, v in history.items()}
-    }
-
-runpod.serverless.start({"handler": handler})
+# Запуск RunPod handler
+if __name__ == "__main__":
+    runpod.serverless.start({"handler": handler})
