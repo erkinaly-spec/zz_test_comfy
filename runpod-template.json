@@ -6,7 +6,7 @@
   "containerPort": 8188,
   "volumeMounts": [
     {
-      "volumeId": "YOUR_RUNPOD_STORAGE_ID",
+      "volumeId": "cygdww4m3f",
       "volumeMountPath": "/runpod-volume"
     }
   ],
@@ -16,7 +16,7 @@
       "value": "8188"
     }
   ],
-  "gpuTypeId": "NVIDIA_RTX_4090",
+  "gpuTypeId": "GPU_32GB_PRO",
   "volumeInGb": 0,
   "containerDiskInGb": 20,
   "minMemoryInGb": 16,
@@ -36,7 +36,7 @@
   "locations": ["US-KS-1", "US-KS-2", "EU-CZ-1", "EU-RO-1"],
   "dataCenterId": "",
   "allowedCudaVersions": ["11.8"],
-  "podTypeId": "NVIDIA_RTX_4090",
+  "podTypeId": "GPU_32GB_PRO",
   "ports": "8188/http"
 }
 
